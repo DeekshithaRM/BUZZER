@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BUZZER - Host</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;color:#fff;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:radial-gradient(circle at 50% 0%,#1c2237 0%,#0b0c10 70%) fixed;padding:24px 36px}
+  header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
+  h1{margin:0;font-size:38px;font-weight:900;letter-spacing:5px;color:#00f3ff;text-shadow:0 0 10px #00f3ff,0 0 28px #00f3ff88}
+  #reset{padding:16px 34px;font-size:22px;font-weight:900;letter-spacing:1px;color:#001018;border:0;border-radius:14px;cursor:pointer;background:linear-gradient(90deg,#00f3ff,#7a5cff);box-shadow:0 0 24px #00f3ff66}
+  #reset:hover{filter:brightness(1.15)}
+  main{display:grid;grid-template-columns:1.6fr 1fr;gap:24px}
+  .card{padding:20px;border-radius:20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);margin-bottom:24px}
+  h2{margin:0 0 14px;font-size:15px;letter-spacing:4px;color:#00f3ff}
+  .row{display:flex;align-items:center;gap:18px;padding:14px 22px;margin:10px 0;border-radius:14px;font-size:34px;font-weight:900;border-left:8px solid #ffffff22;background:#ffffff0d;animation:pop .25s}
+  .row .n{width:70px}
+  .row.p1{padding:30px 32px;font-size:68px;color:#ffe066;border:3px solid #ffd700;border-left-width:12px;background:linear-gradient(90deg,#ffd70040,#ffd70008);box-shadow:0 0 50px #ffd70066,inset 0 0 30px #ffd70022;text-shadow:0 0 18px #ffd700aa}
+  .row.p1 .n{width:110px}
+  .row.p2{font-size:46px;border-left-color:#c8d0dc;background:linear-gradient(90deg,#c8d0dc33,#c8d0dc08);color:#e8edf5}
+  .row.p3{font-size:40px;border-left-color:#cd7f32;background:linear-gradient(90deg,#cd7f3333,#cd7f3208);color:#f0b27a}
+  .empty{text-align:center;color:#6f7893;font-size:26px;padding:60px 0}
+  @keyframes pop{from{transform:scale(.85);opacity:0}to{transform:scale(1);opacity:1}}
+  #tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  .tile{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;font-size:18px;font-weight:800;color:#fff;background:#ffffff0d;border:1px solid #ffffff1f;cursor:pointer}
+  .tile:hover{border-color:#00f3ff}
+  .dot{width:12px;height:12px;border-radius:50%;background:#444b63}
+  .on .dot{background:#2dff9a;box-shadow:0 0 10px #2dff9a,0 0 20px #2dff9a88}
+  .off .dot{background:#ff3b5c;box-shadow:0 0 10px #ff3b5c;animation:blink .8s infinite}
+  .free{color:#7c849c}
+  @keyframes blink{50%{opacity:.15}}
+  #qrbox{text-align:center}
+  #qr{background:#fff;padding:10px;border-radius:14px;width:200px;height:200px}
+  #url{margin-top:10px;font-size:14px;color:#9fe9ff;word-break:break-all}
+  small{color:#7c849c;display:block;margin-top:10px}
+</style>
+</head>
+<body>
+<header>
+  <h1>HOST DASHBOARD</h1>
+  <button id="reset">RESET BOARD (SPACE)</button>
+</header>
+<main>
+  <section class="card">
+    <h2>LIVE LEADERBOARD</h2>
+    <div id="list"></div>
+  </section>
+  <section>
+    <div class="card">
+      <h2>TEAMS JOINED</h2>
+      <div id="tiles"></div>
+      <small>Click a team to kick / free its slot</small>
+    </div>
+    <div class="card" id="qrbox">
+      <h2>SCAN TO JOIN</h2>
+      <img id="qr" alt="QR code">
+      <div id="url"></div>
+    </div>
+  </section>
+</main>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+const $ = (id) => document.getElementById(id);
+const key = new URLSearchParams(location.search).get('key') || prompt('Host key?') || '';
+const medals = ['🏆', '🥈', '🥉'];
+let prevCount = 0, ctx;
+
+$('url').textContent = location.origin;
+$('qr').src = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=0&data=' + encodeURIComponent(location.origin);
+
+function buzzerSound() {
+  try {
+    ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+    const t = ctx.currentTime;
+    [[220, 0], [277, 0], [165, .32]].forEach(([f, d]) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sawtooth'; o.frequency.value = f;
+      g.gain.setValueAtTime(.001, t + d); g.gain.exponentialRampToValueAtTime(.25, t + d + .02);
+      g.gain.exponentialRampToValueAtTime(.001, t + d + .5);
+      o.connect(g); g.connect(ctx.destination); o.start(t + d); o.stop(t + d + .55);
+    });
+  } catch (e) {}
+}
+
+socket.on('connect', () => socket.emit('host_auth', key, (ok) => {
+  if (!ok) document.body.innerHTML = '<h1 style="text-align:center;margin-top:20vh">WRONG HOST KEY</h1>';
+}));
+
+socket.on('order_update', ({ order, status }) => {
+  if (order.length && prevCount === 0) buzzerSound();
+  prevCount = order.length;
+
+  $('list').innerHTML = order.length ? order.map((o, i) =>
+    `<div class="row${i < 3 ? ' p' + (i + 1) : ''}"><span class="n">${medals[i] || '#' + (i + 1)}</span>TEAM ${o.team}</div>`).join('')
+    : '<div class="empty">READY — waiting for buzzes…</div>';
+
+  $('tiles').innerHTML = '';
+  for (let n = 1; n <= 10; n++) {
+    const b = document.createElement('button');
+    b.className = 'tile ' + status[n];
+    b.innerHTML = `<span class="dot"></span>Team ${n}`;
+    b.onclick = () => { if (status[n] !== 'free' && confirm('Kick / free Team ' + n + '?')) socket.emit('kick', { team: n, key }); };
+    $('tiles').appendChild(b);
+  }
+});
+
+const reset = () => socket.emit('reset', key);
+$('reset').onclick = reset;
+document.addEventListener('keydown', (e) => { if (e.code === 'Space') { e.preventDefault(); reset(); } });
+</script>
+</body>
+</html>
