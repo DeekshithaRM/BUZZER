@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>BUZZER</title>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;min-height:100vh;color:#fff;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:radial-gradient(circle at 50% 0%,#1c2237 0%,#0b0c10 70%) fixed;display:flex;flex-direction:column;align-items:center;padding:18px 14px 30px}
+  h1{margin:6px 0 4px;font-size:34px;font-weight:900;letter-spacing:4px;color:#00f3ff;text-shadow:0 0 8px #00f3ff,0 0 22px #00f3ff88}
+  #status{font-size:12px;font-weight:800;letter-spacing:2px;padding:4px 12px;border-radius:20px;background:#ff3b5c22;color:#ff6b81}
+  #status.live{background:#00ff8822;color:#2dff9a}
+  #status::before{content:"● "}
+  .card{width:100%;max-width:380px;margin-top:16px;padding:14px;border-radius:18px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+  select{width:100%;padding:12px;font-size:18px;font-weight:700;color:#fff;background:#10131f;border:1px solid #00f3ff66;border-radius:12px}
+  #msg{color:#ff6b81;font-size:14px;min-height:18px;margin-top:6px;text-align:center}
+  #stage{margin:26px 0 8px;height:230px;display:flex;align-items:center;justify-content:center}
+  #buzz{width:190px;height:190px;border-radius:50%;border:6px solid #00f3ff;color:#fff;font-size:34px;font-weight:900;letter-spacing:2px;cursor:pointer;touch-action:manipulation;
+    background:radial-gradient(circle at 35% 28%,#ff8a8a 0%,#ff1f3d 45%,#a1001c 100%);
+    box-shadow:inset 0 6px 12px #ffffff66,inset 0 -10px 18px #00000066,0 10px 0 #6b0014,0 18px 30px #000a,0 0 30px #ff1f3d88;
+    animation:breathe 1.6s ease-in-out infinite;transition:transform .08s,box-shadow .08s}
+  #buzz:active:not(:disabled){transform:translateY(8px) scale(.95);box-shadow:inset 0 6px 12px #ffffff44,inset 0 -6px 12px #00000066,0 2px 0 #6b0014,0 6px 14px #000a,0 0 40px #ff1f3d}
+  #buzz:disabled{animation:none;filter:grayscale(.85) brightness(.45);cursor:not-allowed;border-color:#3a4256}
+  @keyframes breathe{50%{box-shadow:inset 0 6px 12px #ffffff66,inset 0 -10px 18px #00000066,0 10px 0 #6b0014,0 18px 30px #000a,0 0 60px #ff1f3dcc}}
+  #banner{position:fixed;top:0;left:0;right:0;padding:16px;text-align:center;font-size:22px;font-weight:900;letter-spacing:1px;z-index:9;display:none}
+  #banner.win{display:block;color:#2a1c00;background:linear-gradient(90deg,#ffb700,#ffe066,#ffb700);animation:flash .5s 4}
+  #banner.lock{display:block;background:#2a2f45;color:#ff9aa8}
+  @keyframes flash{50%{background:#fff7c2;box-shadow:0 0 60px #ffd700}}
+  h3{margin:0 0 8px;font-size:13px;letter-spacing:3px;color:#00f3ff}
+  .row{display:flex;gap:12px;align-items:center;padding:10px 12px;margin:6px 0;border-radius:10px;font-size:19px;font-weight:800;background:#ffffff0d;border-left:5px solid #ffffff22}
+  .row .n{width:32px}
+  .row.p1{border-left-color:#ffd700;background:linear-gradient(90deg,#ffd70033,#ffd70008)}
+  .row.p2{border-left-color:#c8d0dc;background:linear-gradient(90deg,#c8d0dc2e,#c8d0dc06)}
+  .row.p3{border-left-color:#cd7f32;background:linear-gradient(90deg,#cd7f322e,#cd7f3206)}
+  .row.me{outline:2px solid #00f3ff;box-shadow:0 0 14px #00f3ff88}
+  .tag{margin-left:auto;font-size:12px;color:#00f3ff}
+  .empty{color:#7c849c;text-align:center;font-size:15px;padding:8px}
+</style>
+</head>
+<body>
+<div id="banner"></div>
+<h1>BUZZER</h1>
+<div id="status">DISCONNECTED</div>
+
+<div class="card">
+  <select id="team"><option value="">Select your team…</option></select>
+  <div id="msg"></div>
+</div>
+
+<div id="stage"><button id="buzz" disabled>BUZZ</button></div>
+
+<div class="card">
+  <h3>LIVE BUZZ ORDER</h3>
+  <div id="board"></div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+const $ = (id) => document.getElementById(id);
+let token = localStorage.getItem('aptiToken');
+if (!token) { token = Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('aptiToken', token); }
+let team = null, order = [], online = false, ctx;
+const sel = $('team');
+for (let i = 1; i <= 10; i++) sel.add(new Option('Team ' + i, i));
+const saved = localStorage.getItem('aptiTeam');
+if (saved) sel.value = saved;
+const medals = ['🥇', '🥈', '🥉'];
+
+function join(n) {
+  socket.emit('join', { team: n, token }, (res) => {
+    if (!res.ok) {
+      team = null; sel.value = ''; localStorage.removeItem('aptiTeam');
+      $('msg').textContent = res.msg; render(); return;
+    }
+    team = +n; $('msg').textContent = ''; localStorage.setItem('aptiTeam', n); render();
+  });
+}
+sel.onchange = () => { team = null; if (sel.value) join(sel.value); else render(); };
+
+function click() {
+  try {
+    ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'square'; o.frequency.setValueAtTime(900, ctx.currentTime); o.frequency.exponentialRampToValueAtTime(300, ctx.currentTime + .12);
+    g.gain.setValueAtTime(.25, ctx.currentTime); g.gain.exponentialRampToValueAtTime(.001, ctx.currentTime + .15);
+    o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + .15);
+  } catch (e) {}
+}
+
+$('buzz').addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  if ($('buzz').disabled) return;
+  socket.emit('buzz');
+  click();
+  if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+  $('buzz').disabled = true; // lock instantly; server confirms the position
+});
+
+function render() {
+  const pos = order.findIndex((o) => o.team === team);
+  $('buzz').disabled = !(team && online) || pos >= 0;
+  $('buzz').textContent = pos >= 0 ? '✓' : 'BUZZ';
+  const b = $('banner');
+  if (pos === 0) { b.className = 'win'; b.textContent = '🏆 YOU BUZZED 1ST!'; }
+  else if (pos > 0) { b.className = 'lock'; b.textContent = `LOCKED OUT - #${pos + 1} PLACE`; }
+  else b.className = '';
+  $('board').innerHTML = order.length ? order.map((o, k) =>
+    `<div class="row${k < 3 ? ' p' + (k + 1) : ''}${o.team === team ? ' me' : ''}"><span class="n">${medals[k] || '#' + (k + 1)}</span>TEAM ${o.team}${o.team === team ? '<span class="tag">(YOU)</span>' : ''}</div>`).join('')
+    : '<div class="empty">Waiting for buzzes…</div>';
+}
+
+socket.on('order_update', (s) => { order = s.order; render(); });
+socket.on('connect', () => { online = true; $('status').textContent = 'CONNECTED LIVE'; $('status').className = 'live'; if (sel.value) join(sel.value); else render(); });
+socket.on('disconnect', () => { online = false; $('status').textContent = 'DISCONNECTED'; $('status').className = ''; render(); });
+socket.on('kicked', () => { localStorage.removeItem('aptiTeam'); location.reload(); });
+</script>
+</body>
+</html>
