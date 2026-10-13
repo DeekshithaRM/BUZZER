@@ -10,16 +10,17 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.static(__dirname + '/public'));
 
+let numTeams = parseInt(process.env.TEAMS, 10) || 10;
 let order = [];  // [{ team, ts }] in server-arrival order (server clock only)
 let teams = {};  // n -> { token, sid }
 
 function snapshot() {
   const status = {};
-  for (let n = 1; n <= 10; n++) {
+  for (let n = 1; n <= numTeams; n++) {
     const t = teams[n];
     status[n] = !t ? 'free' : t.sid ? 'on' : 'off';
   }
-  return { order, status };
+  return { order, status, numTeams };
 }
 const broadcast = () => io.emit('order_update', snapshot());
 
@@ -29,7 +30,7 @@ io.on('connection', (socket) => {
   socket.on('join', ({ team, token } = {}, ack) => {
     if (typeof ack !== 'function') return;
     team = parseInt(team, 10);
-    if (!(team >= 1 && team <= 10) || !token) return ack({ ok: false, msg: 'Invalid team' });
+    if (!(team >= 1 && team <= numTeams) || !token) return ack({ ok: false, msg: 'Invalid team' });
     const t = teams[team];
     if (t && t.token !== token) return ack({ ok: false, msg: `Team ${team} is already taken` });
     teams[team] = { token, sid: socket.id };
@@ -50,6 +51,17 @@ io.on('connection', (socket) => {
   socket.on('reset', (key) => {
     if (key !== HOST_KEY) return;
     order = [];
+    broadcast();
+  });
+
+  socket.on('set_teams', ({ n, key } = {}) => {
+    n = parseInt(n, 10);
+    if (key !== HOST_KEY || !(n >= 1 && n <= 50)) return;
+    for (const t of Object.keys(teams)) {
+      if (+t > n) { if (teams[t].sid) io.to(teams[t].sid).emit('kicked'); delete teams[t]; }
+    }
+    order = order.filter((o) => o.team <= n);
+    numTeams = n;
     broadcast();
   });
 
