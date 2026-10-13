@@ -34,6 +34,10 @@
   #qr{background:#fff;padding:10px;border-radius:14px;width:200px;height:200px}
   #url{margin-top:10px;font-size:14px;color:#9fe9ff;word-break:break-all}
   small{color:#7c849c;display:block;margin-top:10px}
+  .setrow{display:flex;gap:8px;margin-bottom:12px}
+  .setrow input{width:80px;padding:10px;font-size:18px;font-weight:800;color:#fff;background:#10131f;border:1px solid #00f3ff66;border-radius:10px}
+  .setrow button{flex:1;padding:10px;font-weight:800;border:0;border-radius:10px;background:#00f3ff;color:#001018;cursor:pointer}
+  #tiles{max-height:42vh;overflow-y:auto}
 </style>
 </head>
 <body>
@@ -49,6 +53,7 @@
   <section>
     <div class="card">
       <h2>TEAMS JOINED</h2>
+      <div class="setrow"><input id="nteams" type="number" min="1" max="50" value="10"><button id="setteams">SET NUMBER OF TEAMS</button></div>
       <div id="tiles"></div>
       <small>Click a team to kick / free its slot</small>
     </div>
@@ -89,7 +94,8 @@ socket.on('connect', () => socket.emit('host_auth', key, (ok) => {
   if (!ok) document.body.innerHTML = '<h1 style="text-align:center;margin-top:20vh">WRONG HOST KEY</h1>';
 }));
 
-socket.on('order_update', ({ order, status }) => {
+socket.on('order_update', ({ order, status, numTeams }) => {
+  if (document.activeElement !== $('nteams')) $('nteams').value = numTeams;
   if (order.length && prevCount === 0) buzzerSound();
   prevCount = order.length;
 
@@ -98,7 +104,7 @@ socket.on('order_update', ({ order, status }) => {
     : '<div class="empty">READY — waiting for buzzes…</div>';
 
   $('tiles').innerHTML = '';
-  for (let n = 1; n <= 10; n++) {
+  for (let n = 1; n <= numTeams; n++) {
     const b = document.createElement('button');
     b.className = 'tile ' + status[n];
     b.innerHTML = `<span class="dot"></span>Team ${n}`;
@@ -107,6 +113,7 @@ socket.on('order_update', ({ order, status }) => {
   }
 });
 
+$('setteams').onclick = () => socket.emit('set_teams', { n: $('nteams').value, key });
 const reset = () => socket.emit('reset', key);
 $('reset').onclick = reset;
 document.addEventListener('keydown', (e) => { if (e.code === 'Space') { e.preventDefault(); reset(); } });

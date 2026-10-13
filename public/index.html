@@ -62,9 +62,15 @@ let token = localStorage.getItem('aptiToken');
 if (!token) { token = Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('aptiToken', token); }
 let team = null, order = [], online = false, ctx;
 const sel = $('team');
-for (let i = 1; i <= 10; i++) sel.add(new Option('Team ' + i, i));
-const saved = localStorage.getItem('aptiTeam');
-if (saved) sel.value = saved;
+let numTeams = 0;
+function buildOptions(n) {
+  if (n === numTeams) return;
+  numTeams = n;
+  const keep = team || localStorage.getItem('aptiTeam');
+  sel.innerHTML = '<option value="">Select your team…</option>';
+  for (let i = 1; i <= n; i++) sel.add(new Option('Team ' + i, i));
+  if (keep && +keep <= n) sel.value = keep;
+}
 const medals = ['🥇', '🥈', '🥉'];
 
 function join(n) {
@@ -110,8 +116,8 @@ function render() {
     : '<div class="empty">Waiting for buzzes…</div>';
 }
 
-socket.on('order_update', (s) => { order = s.order; render(); });
-socket.on('connect', () => { online = true; $('status').textContent = 'CONNECTED LIVE'; $('status').className = 'live'; if (sel.value) join(sel.value); else render(); });
+socket.on('order_update', (s) => { buildOptions(s.numTeams); order = s.order; render(); });
+socket.on('connect', () => { online = true; $('status').textContent = 'CONNECTED LIVE'; $('status').className = 'live'; const sv = localStorage.getItem('aptiTeam'); if (sv) join(sv); else render(); });
 socket.on('disconnect', () => { online = false; $('status').textContent = 'DISCONNECTED'; $('status').className = ''; render(); });
 socket.on('kicked', () => { localStorage.removeItem('aptiTeam'); location.reload(); });
 </script>
